@@ -198,13 +198,98 @@ app.post('/users', (req, res) => {
 //     });
 // });
 
-// 
+// PUT /posts/:id - Cập nhật bài viết gửi lên {title: string, content: string} 
+app.put('/posts/:id', (req, res) => {
+    const { id } = req.params;            // Lấy giá trị id từ đường dẫn URL, ví dụ /posts/2.
+    const { title, content } = req.body;  // Lấy dữ liệu mới từ body request (title, content) ( từ client gửi lên)
+
+    // ✅ Mảng dữ liệu tạm
+    let posts = [
+        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+        { id: "2", title: "Hướng dẫn API REST", content: "Cách dựng API REST với NodeJS" },
+        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+    ];
+
+    // ✅ Tìm bài viết theo id
+    const index = posts.findIndex(p => p.id === id);
+    // findIndex() sẽ duyệt mảng từ đầu đến cuối. Tìm vị trí bài viết cần sửa trong mảng. Nếu không thấy → trả lỗi 404.
+    //Dòng này có nhiệm vụ tìm xem bài viết nào trong mảng posts có id trùng với id mà client gửi lên (qua URL), và lấy vị trí (index) của bài viết đó trong mảng.
+
+    if (index === -1) {
+        return res.status(404).json({
+            error: "Không tìm thấy bài viết",
+            id: id
+        });
+    }
+
+    // ✅ Kiểm tra dữ liệu gửi lên
+    if (!title || !content) {
+        return res.status(400).json({
+            error: "Thiếu dữ liệu",
+            message: "title và content là bắt buộc"
+        });
+    }
+
+    // ✅ Cập nhật bài viết 
+    // Không phải là khai báo lại. ✅ Mà chỉ là thay đổi phần tử bên trong mảng hiện có.
+    //cập nhật (thay đổi) bài viết cũ trong mảng posts → bằng cách giữ nguyên các thuộc tính cũ, và ghi đè lại các thuộc tính mới (title, content) mà client gửi lên.
+    //posts[index] Là phần tử cần cập nhật trong mảng.
+    //Ý nghĩa tổng thể: Tạo ra một object mới, sao chép toàn bộ dữ liệu cũ từ posts[index], rồi ghi đè lại hai trường title và content bằng giá trị mới (client gửi lên).
+    // ...posts[index] = copy toàn bộ các cặp key–value của bài viết cũ
+    // posts[index] = { id: "2", title: "Cũ", content: "Cũ" }; -> ...posts[index] tương đương với: id: "2", title: "Cũ", content: "Cũ"
+    posts[index] = { ...posts[index], title, content };
+
+    // ✅ Trả về kết quả
+    res.status(200).json({
+        message1: "Cập nhật bài viết thành công",
+        post: posts[index]
+    });
+});
+
 
 // (4) DELETE - Xóa user
 // app.delete('/users/:id', (req, res) => {
 //     const id = req.params.id;
 //     res.json({ message: `Đã xóa user có ID = ${id}` });
 // });
+
+
+// DELETE /posts/:id - Xóa bài viết
+app.delete('/posts/:id', (req, res) => {
+    const { id } = req.params;
+
+    // ✅ Mảng dữ liệu giả lập
+    let posts = [
+        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+        { id: "2", title: "Hướng dẫn API REST", content: "Cách dựng API REST với NodeJS" },
+        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+    ];
+
+    // ✅ Tìm vị trí bài viết theo id
+    const index = posts.findIndex(p => p.id === id);
+
+    // ❌ Nếu không tìm thấy thì trả về lỗi 404
+    if (index === -1) {
+        return res.status(404).json({
+            error: "Không tìm thấy bài viết cần xóa",
+            id: id
+        });
+    }
+
+    // ✅ Xóa bài viết bằng splice()  cú pháp array.splice(start, deleteCount)    array.splice(vị_trí_bắt_đầu, số_lượng_cần_xóa, ...phần_tử_mới)
+    //start	Vị trí bắt đầu xóa hoặc thêm (đếm từ 0). deleteCount	Số lượng phần tử cần xóa kể từ vị trí start.
+    const deletedPost = posts.splice(index, 1)[0]; // lấy ra phần tử bị xóa
+    //[0] → lấy phần tử đầu tiên trong mảng đó
+    //Nếu bỏ [0] thì vẫn hoạt động, nhưng khi gửi về cho client, sẽ nhận được mảng, không phải object.
+    //“Xóa bài viết ở vị trí index khỏi mảng, và lưu bài viết vừa bị xóa vào biến deletedPost.”
+
+    // ✅ Trả về phản hồi
+    res.status(200).json({
+        message: "Đã xóa bài viết thành công",
+        deleted: deletedPost
+    });
+});
+
 
 // ===== BƯỚC 4: CHẠY SERVER =====
 app.listen(PORT, () => {
