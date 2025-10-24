@@ -105,6 +105,7 @@ app.get('/posts/:id', (req, res) => {
     return res.status(404).json({ error: "Post not found", id: id });
 });
 
+
 // chọn cổng server chạy (ví dụ cổng 8080 )/  bắt buộc phải có 1 cổng để server biết “ngồi ở đâu”.
 const PORT = 3001; // Đặt cổng server chạy
 
@@ -125,6 +126,40 @@ app.use(express.json());
 //         { id: 2, name: 'Emi' }
 //     ]);
 // });
+
+// POST /posts - Thêm bài viết mới
+app.post('/posts', (req, res) => {
+    const { title, content } = req.body;
+    if (!title || !content) {
+        return res.status(400).json({
+            error: "Bad Request",
+            message: "title và content là bắt buộc"
+        });
+    }
+
+    const posts = [
+        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+        { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
+        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+    ];
+
+    // Tạo id mới — cách này là lấy max + 1
+    const newId = (posts.length + 1).toString();
+    //posts.length -> Lấy số phần tử trong mảng + thêm 1 và chuyển nó sang string vì id có kiểu string
+    const newPost = { id: newId, title, content };
+    posts.push(newPost);
+
+    // Trả về 201 Created và bài viết mới
+    return res.status(201).json(newPost);
+
+    //   res.status(201).json({
+    //     message: "Tạo bài viết thành công",
+    //     post: newPost,
+    //     location: `/posts/${newId}`
+    //   });
+
+
+});
 
 // // (2) POST - Thêm user mới
 app.post('/users', (req, res) => {
@@ -162,6 +197,8 @@ app.post('/users', (req, res) => {
 //         user: updatedUser
 //     });
 // });
+
+// 
 
 // (4) DELETE - Xóa user
 // app.delete('/users/:id', (req, res) => {
