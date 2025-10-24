@@ -85,6 +85,25 @@ app.get('/posts', (req, res) => {
     ];
     res.json(posts);
 });
+// Thêm 1 cái api GET /posts/{id} tìm và chỉ trả về 1 post duy nhất sau khi tìm kiếm trong cái mảng mình có ở trên.
+// GET /posts/:id - trả về 1 bài viết
+app.get('/posts/:id', (req, res) => {
+    const { id } = req.params;
+    // req.params là một object chứa tất cả các tham số route (route parameters) được khai báo với : trong đường dẫn.
+    // Cú pháp { id } = req.params sử dụng destructuring để lấy biến id từ req.params.
+    // const params = req.params; const id = params.id;
+    const posts = [
+        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+        { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
+        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+    ];
+    const post = posts.find(p => p.id === id); //Dùng phương thức .find() của mảng để tìm phần tử mà p.id === id.
+    //Nếu có bài viết có id trùng với id được truyền — thì post sẽ là object đó; nếu không thì post sẽ là undefined.
+    if (post) {
+        return res.json(post);
+    }
+    return res.status(404).json({ error: "Post not found", id: id });
+});
 
 // chọn cổng server chạy (ví dụ cổng 8080 )/  bắt buộc phải có 1 cổng để server biết “ngồi ở đâu”.
 const PORT = 3001; // Đặt cổng server chạy
