@@ -52,7 +52,6 @@ app.get('/search-users', (req, res) => {
         { id: 9, name: 'Noah' },
         { id: 10, name: 'Emma' }
     ];
-
     const keyword = name.trim().toLowerCase();
     //trim() → loại bỏ khoảng trắng ở đầu và cuối chuỗi. Ví dụ " li " → "li". W3Schools toLowerCase() → chuyển hết chuỗi thành chữ thường. Ví dụ "LiLy" → "lily"
     //Người dùng có thể nhập " Li " hoặc "LILY" hoặc "li" → nếu không chuẩn hóa thì lọc sẽ không đúng.
@@ -75,9 +74,17 @@ app.get('/search-users', (req, res) => {
     //total: filtered.length → gửi số lượng phần tử kết quả tìm được (độ dài mảng filtered).
     //results: filtered → mảng chứa các user thỏa điều kiện tìm kiếm.
     //.length là thuộc tính (property) của mảng — nó trả về một số (integer) cho biết mảng đang có bao nhiêu phần tử. 
-
 });
 
+// Thêm 1 cái api GET /posts trả về 1 mảng các post dưới dạng {id: string, title: string, content:"string"}
+app.get('/posts', (req, res) => {
+    const posts = [
+        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+        { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
+        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+    ];
+    res.json(posts);
+});
 
 // chọn cổng server chạy (ví dụ cổng 8080 )/  bắt buộc phải có 1 cổng để server biết “ngồi ở đâu”.
 const PORT = 3001; // Đặt cổng server chạy
