@@ -4,9 +4,25 @@
 const express = require('express'); // gọi thư viện express
 // khởi tạo ứng dụng express Dòng này khởi tạo ứng dụng Express, tức là tạo ra một “server object” — gọi là app. Giống như: “Tao đã bật cái web server lên rồi đó.”
 const app = express(); // Tạo ứng dụng Express
+// CẤU HÌNH MIDDLEWARE =====
+// Dùng middleware này để server hiểu dữ liệu JSON gửi từ client (Postman, front-end)
+app.use(express.json());
+// Khai báo dữ liệu dùng chung (nằm ngoài API)
+let posts = [
+    { id: "1", title: "Bài 1", content: "Giới thiệu REST API" },
+    { id: "2", title: "Bài 2", content: "NodeJS cơ bản" },
+    { id: "3", title: "Bài 3", content: "ExpressJS là gì" },
+    { id: "4", title: "Bài 4", content: "Cách dùng Postman" },
+    { id: "5", title: "Bài 5", content: "JSON và HTTP" },
+    { id: "6", title: "Bài 6", content: "Routing trong Express" },
+    { id: "7", title: "Bài 7", content: "Middleware là gì" },
+    { id: "8", title: "Bài 8", content: "Error Handling cơ bản" },
+    { id: "9", title: "Bài 9", content: "CRUD API với NodeJS" },
+    { id: "10", title: "Bài 10", content: "Tổng kết REST API" }
+];
 
 // định nghĩa 1 route (đường dẫn) cơ bản
-// '/’ nghĩa là đường dẫn gốc (trang chủ). Khi ai đó truy cập http://localhost:3000/, code trong ngoặc sẽ chạy.
+// '/’ nghĩa là đường dẫn gốc (trang chủ). Khi ai đó truy cập http://localhost:3001/, code trong ngoặc sẽ chạy.
 // (req, res) là request và response — 2 đối tượng quan trọng trong REST API. Giống như: “Nếu ai gõ vô trang chủ thì trả lời họ dòng ‘Server đang chạy ngon lành!’ nha.”
 
 app.get('/', (req, res) => {
@@ -76,15 +92,53 @@ app.get('/search-users', (req, res) => {
     //.length là thuộc tính (property) của mảng — nó trả về một số (integer) cho biết mảng đang có bao nhiêu phần tử. 
 });
 
-// Thêm 1 cái api GET /posts trả về 1 mảng các post dưới dạng {id: string, title: string, content:"string"}
+// // Thêm 1 cái api GET /posts trả về 1 mảng các post dưới dạng {id: string, title: string, content:"string"}
+// app.get('/posts', (req, res) => {
+//     const posts = [
+//         { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+//         { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
+//         { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+//     ];
+//     res.json(posts);
+// });
+
+// API GET /posts - phân trang
 app.get('/posts', (req, res) => {
-    const posts = [
-        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
-        { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
-        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
-    ];
-    res.json(posts);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    //Math là đối tượng (object) có sẵn trong JavaScript. Nó chứa nhiều hàm (method) để làm việc với toán học: như Math.max(), Math.min(), Math.round(), Math.random(), Math.floor()
+    //Trong dòng này, mình dùng Math.max() để chọn giá trị lớn hơn giữa hai số (đảm bảo không bị âm hoặc 0).
+    //Math.max(5, 1) // → 5 Math.max(-3, 1) // → 1
+    //parseInt() là hàm có sẵn của JavaScript, dùng để chuyển chuỗi (string) sang số nguyên (integer)
+    //req là viết tắt của request — đối tượng mà ExpressJS tạo ra để chứa dữ liệu client gửi lên. .
+    //query là nơi Express lưu các tham số nằm sau dấu “?” trong URL. .page là tên của key trong query string.
+    //parseInt(req.query.page) || 1  Nếu req.query.page không có hoặc không hợp lệ → dùng giá trị mặc định là 1.
+    //Lấy page từ query string (req.query.page). Chuyển nó từ chuỗi sang số (parseInt). 
+    // Nếu người dùng không gửi hoặc nhập linh tinh → mặc định là 1. Dùng Math.max(..., 1) để đảm bảo không bao giờ nhỏ hơn 1.
+    const limit = Math.max(parseInt(req.query.limit) || 3, 1);
+    //Hãy đọc số trang (page) và số lượng bài viết mỗi trang (limit) từ đường dẫn URL mà người dùng gửi lên. 
+    // Nếu họ không gửi, hoặc gửi sai, thì dùng giá trị mặc định là 1 và 3.
+    const total = posts.length;
+    const totalPages = Math.ceil(total / limit);
+    //total / limit: chia tổng số bài viết cho số bài mỗi trang → để biết có bao nhiêu trang.
+    //Math.ceil() là hàm làm tròn lên(của đối tượng Math)   Math.ceil(3.2) // → 4
+    const start = (page - 1) * limit;
+    const end = start + limit;
+
+    const data = posts.slice(start, end);
+    // .slice(start, end) là hàm cắt mảng trong JavaScript.
+    //Nó trả về một mảng mới chứa các phần tử từ start → end - 1. vì nó lấy theo phần thử index
+    res.json({
+        page, // tự hiểu là page: page
+        limit, // tự hiểu là limit: limit
+        total, // tự hiểu là total: total
+        totalPages, // tự hiểu là totalPages: totalPages
+        hasPrev: page > 1,
+        hasNext: page < totalPages,
+        results: data
+    });
 });
+
+
 // Thêm 1 cái api GET /posts/{id} tìm và chỉ trả về 1 post duy nhất sau khi tìm kiếm trong cái mảng mình có ở trên.
 // GET /posts/:id - trả về 1 bài viết
 app.get('/posts/:id', (req, res) => {
@@ -114,9 +168,7 @@ const PORT = 3001; // Đặt cổng server chạy
 //     console.log(`Server đang chạy tại http://localhost:${PORT}`);
 // });
 
-// ===== BƯỚC 2: CẤU HÌNH MIDDLEWARE =====
-// Dùng middleware này để server hiểu dữ liệu JSON gửi từ client (Postman, front-end)
-app.use(express.json());
+
 
 // ===== BƯỚC 3: ĐỊNH NGHĨA CÁC API (ROUTES) =====
 // (1) GET - Lấy danh sách user
