@@ -24,6 +24,9 @@ const postSchema = new mongoose.Schema({
     title: { type: String, required: true },    // bắt buộc có title (chuỗi)
     content: { type: String, required: true }   // bắt buộc có content (chuỗi)
 }, { timestamps: true }); // tự động thêm createdAt, updatedAt
+// 🟢 Thêm index cho title
+postSchema.index({ title: 1 }); // 1 = sắp xếp tăng dần (A → Z). -1 = sắp xếp giảm dần (Z → A).
+//  “Ê MongoDB, mày tạo cho tao một cái mục lục sắp xếp theo title nhé — từ A → Z.”
 // 2. Tạo Model - đại diện cho collection "posts"
 const Post = mongoose.model('Post', postSchema);
 //Tên Model nên viết hoa chữ cái đầu, vì nó là “class” (lớp đối tượng) đại diện cho 1 loại dữ liệu.
@@ -127,16 +130,35 @@ app.get('/search-users', (req, res) => {
 // });
 
 // LẤY DANH SÁCH BÀI VIẾT (GET /posts) và phân trang - getAllPost and pagination
+// Thử tạo index trên cái title của Post. Sau đó thì update cái API GET /posts để hỗ trợ tìm (search) posts theo title.
 app.get('/posts', async (req, res) => {
     try {
-        // 1) Đọc tham số ?page & ?limit từ query, ép số và chặn min = 1
+        //1️⃣ Đọc tham số ?page & ?limit từ query, ép số và chặn min = 1
         const page = Math.max(parseInt(req.query.page) || 1, 1);
         const limit = Math.max(parseInt(req.query.limit) || 5, 1);
-        // (tuỳ chọn sau này) filter tìm kiếm; giờ để trống
-        // const filter = {};
 
-        // 2) Đếm tổng số document để tính tổng trang
-        const total = await Post.countDocuments();
+        //2️⃣ Đọc thêm tham số ?search (nếu người dùng muốn tìm theo title)
+        // req.query là object chứa các tham số query string từ URL gửi lên
+        //"Tạo biến search và gán giá trị req.query.search cho nó."
+        const { search } = req.query;
+
+        //3️⃣ Tạo điều kiện lọc
+        // Nếu có ?search thì filter theo title (tìm gần đúng, không phân biệt hoa thường)
+        let filter = {};
+        if (search) {
+            filter = { title: { $regex: search, $options: 'i' } };
+            //filter = { title: { ... } } nghĩa là: Tạo điều kiện lọc cho MongoDB: “Tôi chỉ muốn tìm những bài viết có title giống với từ khóa người nhập.”
+            //$regex: là “regular expression” — cho phép tìm gần đúng. → Nếu search = "api" → Thì sẽ tìm được "REST API", "api cơ bản", "học Api nâng cao"...
+            //$options: 'i': nghĩa là không phân biệt chữ hoa hay thường → "API", "api", "Api" đều được coi là giống nhau.
+            //Nếu có từ khóa search → chỉ tìm bài có title chứa từ đó. Nếu không có → lấy tất cả bài.
+            //{ title: { $regex: search, $options: 'i' } }
+            //Đây là một object lồng nhau (nested object) { <tên_trường>: { <toán_tử_truy_vấn>: <giá_trị> } }
+            // <tên_trường> = title <toán_tử_truy_vấn> = $regex <giá_trị> = search
+            // ví dụ search = ap -> Tìm tất cả các document mà trường title có chứa chữ api (không phân biệt hoa thường).
+        };
+
+        // 4️⃣ Đếm tổng số bài viết (phù hợp với điều kiện filter)
+        const total = await Post.countDocuments(filter);
         //.countDocuments() → là method (hàm có sẵn của Mongoose) dùng để đếm số lượng document (bản ghi) hiện có trong collection.
         //await → là từ khóa của JavaScript, nghĩa là “chờ MongoDB đếm xong rồi mới gán giá trị cho total”.
         //Đoạn này lấy tổng số bài viết hiện có trong DB, gán vào biến total.
@@ -148,13 +170,13 @@ app.get('/posts', async (req, res) => {
         // .max()	Method của Math	Chọn giá trị lớn nhất giữa các số truyền vào.
 
 
-        // 3) Tính vị trí bỏ qua (skip) rồi lấy dữ liệu theo trang
+        //5️⃣ Tính vị trí bỏ qua (skip) rồi lấy dữ liệu theo trang
         const skip = (page - 1) * limit;
         //(page - 1)	Công thức toán học	Tính xem đang ở trang số mấy.->(page − 1) = số trang cần bỏ qua trước khi hiển thị trang hiện tại.
         // limit	Phép nhân trong JS	Mỗi trang có bao nhiêu bài.
         //skip	Biến	Lưu số lượng bài cần bỏ qua.
 
-        const posts = await Post.find()
+        const posts = await Post.find(filter)
             //Post là model đại diện cho collection posts.\
             //.find() là hàm của Mongoose để tìm các document (nhiều dòng) trong MongoDB.
             .sort({ createdAt: -1 }) // mới nhất lên đầu
