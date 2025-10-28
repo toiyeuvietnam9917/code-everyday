@@ -7,6 +7,30 @@ const app = express(); // Tạo ứng dụng Express
 // CẤU HÌNH MIDDLEWARE =====
 // Dùng middleware này để server hiểu dữ liệu JSON gửi từ client (Postman, front-end)
 app.use(express.json());
+
+// ===================== KẾT NỐI MONGODB =====================
+const mongoose = require('mongoose');
+// require('mongoose') → là “gọi thư viện” để Node.js hiểu cách làm việc với MongoDB.
+
+mongoose.connect('mongodb://127.0.0.1:27017/node_rest_demo')
+    .then(() => console.log('✅ Connected to MongoDB'))
+    .catch(err => console.error('❌ MongoDB connection failed:', err));
+//mongoose.connect(...) → là “nối dây điện” giữa code  và database MongoDB trên máy.
+//node_rest_demo Tên của database (MongoDB tự tạo nếu chưa có)
+
+// ===================== TẠO SCHEMA & MODEL =====================
+// 🧱 1. Tạo Schema (khuôn dữ liệu) - Định nghĩa cấu trúc dữ liệu bài viết (post)
+const postSchema = new mongoose.Schema({
+    title: { type: String, required: true },    // bắt buộc có title (chuỗi)
+    content: { type: String, required: true }   // bắt buộc có content (chuỗi)
+}, { timestamps: true }); // tự động thêm createdAt, updatedAt
+// 2. Tạo Model - đại diện cho collection "posts"
+const Post = mongoose.model('Post', postSchema);
+//Tên Model nên viết hoa chữ cái đầu, vì nó là “class” (lớp đối tượng) đại diện cho 1 loại dữ liệu.
+//Post không phải là 1 bài viết duy nhất. Nó là “khuôn” để tạo ra nhiều bài viết. (giống như class Student → tạo ra nhiều student)
+
+
+
 // Khai báo dữ liệu dùng chung (nằm ngoài API)
 let posts = [
     { id: "1", title: "Bài 1", content: "Giới thiệu REST API" },
@@ -102,41 +126,99 @@ app.get('/search-users', (req, res) => {
 //     res.json(posts);
 // });
 
-// API GET /posts - phân trang
-app.get('/posts', (req, res) => {
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    //Math là đối tượng (object) có sẵn trong JavaScript. Nó chứa nhiều hàm (method) để làm việc với toán học: như Math.max(), Math.min(), Math.round(), Math.random(), Math.floor()
-    //Trong dòng này, mình dùng Math.max() để chọn giá trị lớn hơn giữa hai số (đảm bảo không bị âm hoặc 0).
-    //Math.max(5, 1) // → 5 Math.max(-3, 1) // → 1
-    //parseInt() là hàm có sẵn của JavaScript, dùng để chuyển chuỗi (string) sang số nguyên (integer)
-    //req là viết tắt của request — đối tượng mà ExpressJS tạo ra để chứa dữ liệu client gửi lên. .
-    //query là nơi Express lưu các tham số nằm sau dấu “?” trong URL. .page là tên của key trong query string.
-    //parseInt(req.query.page) || 1  Nếu req.query.page không có hoặc không hợp lệ → dùng giá trị mặc định là 1.
-    //Lấy page từ query string (req.query.page). Chuyển nó từ chuỗi sang số (parseInt). 
-    // Nếu người dùng không gửi hoặc nhập linh tinh → mặc định là 1. Dùng Math.max(..., 1) để đảm bảo không bao giờ nhỏ hơn 1.
-    const limit = Math.max(parseInt(req.query.limit) || 3, 1);
-    //Hãy đọc số trang (page) và số lượng bài viết mỗi trang (limit) từ đường dẫn URL mà người dùng gửi lên. 
-    // Nếu họ không gửi, hoặc gửi sai, thì dùng giá trị mặc định là 1 và 3.
-    const total = posts.length;
-    const totalPages = Math.ceil(total / limit);
-    //total / limit: chia tổng số bài viết cho số bài mỗi trang → để biết có bao nhiêu trang.
-    //Math.ceil() là hàm làm tròn lên(của đối tượng Math)   Math.ceil(3.2) // → 4
-    const start = (page - 1) * limit;
-    const end = start + limit;
+// LẤY DANH SÁCH BÀI VIẾT (GET /posts) và phân trang - getAllPost and pagination
+app.get('/posts', async (req, res) => {
+    try {
+        // 1) Đọc tham số ?page & ?limit từ query, ép số và chặn min = 1
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.max(parseInt(req.query.limit) || 5, 1);
+        // (tuỳ chọn sau này) filter tìm kiếm; giờ để trống
+        // const filter = {};
 
-    const data = posts.slice(start, end);
-    // .slice(start, end) là hàm cắt mảng trong JavaScript.
-    //Nó trả về một mảng mới chứa các phần tử từ start → end - 1. vì nó lấy theo phần thử index
-    res.json({
-        page, // tự hiểu là page: page
-        limit, // tự hiểu là limit: limit
-        total, // tự hiểu là total: total
-        totalPages, // tự hiểu là totalPages: totalPages
-        hasPrev: page > 1,
-        hasNext: page < totalPages,
-        results: data
-    });
+        // 2) Đếm tổng số document để tính tổng trang
+        const total = await Post.countDocuments();
+        //.countDocuments() → là method (hàm có sẵn của Mongoose) dùng để đếm số lượng document (bản ghi) hiện có trong collection.
+        //await → là từ khóa của JavaScript, nghĩa là “chờ MongoDB đếm xong rồi mới gán giá trị cho total”.
+        //Đoạn này lấy tổng số bài viết hiện có trong DB, gán vào biến total.
+
+        //totalPages là tổng số trang cần có, đảm bảo ≥ 1.
+        const totalPages = Math.max(Math.ceil(total / limit), 1);
+        //Math	Đối tượng có sẵn trong JavaScript	Chứa các hàm toán học tiện dụng. .ceil()	
+        // Method của Math	Làm tròn lên đến số nguyên gần nhất. 
+        // .max()	Method của Math	Chọn giá trị lớn nhất giữa các số truyền vào.
+
+
+        // 3) Tính vị trí bỏ qua (skip) rồi lấy dữ liệu theo trang
+        const skip = (page - 1) * limit;
+        //(page - 1)	Công thức toán học	Tính xem đang ở trang số mấy.->(page − 1) = số trang cần bỏ qua trước khi hiển thị trang hiện tại.
+        // limit	Phép nhân trong JS	Mỗi trang có bao nhiêu bài.
+        //skip	Biến	Lưu số lượng bài cần bỏ qua.
+
+        const posts = await Post.find()
+            //Post là model đại diện cho collection posts.\
+            //.find() là hàm của Mongoose để tìm các document (nhiều dòng) trong MongoDB.
+            .sort({ createdAt: -1 }) // mới nhất lên đầu
+            .skip(skip) //→ bỏ qua một số dòng đầu (cho phân trang) .find() là hàm của Mongoose để tìm các document (nhiều dòng) trong MongoDB.
+            .limit(limit); //→ chỉ lấy một số lượng giới hạn (ví dụ 5 bài/trang)
+
+        // 4) Trả kết quả + metadata phân trang
+        res.json({
+            page,
+            limit,
+            total,
+            totalPages,
+            hasPrev: page > 1,
+            hasNext: page < totalPages,
+            results: posts
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Lỗi server khi lấy danh sách bài viết' });
+    }
 });
+
+
+// API GET /posts - phân trang
+// app.get('/posts', (req, res) => {
+//     const page = Math.max(parseInt(req.query.page) || 1, 1);
+
+//     //Math là đối tượng (object) có sẵn trong JavaScript. Nó chứa nhiều hàm (method) để làm việc với toán học: như Math.max(), Math.min(), Math.round(), Math.random(), Math.floor()
+//     //Trong dòng này, mình dùng Math.max() để chọn giá trị lớn hơn giữa hai số (đảm bảo không bị âm hoặc 0).
+//     //Math.max(5, 1) // → 5 Math.max(-3, 1) // → 1
+//     //parseInt() là hàm có sẵn của JavaScript, dùng để chuyển chuỗi (string) sang số nguyên (integer)
+//     //req là viết tắt của request — đối tượng mà ExpressJS tạo ra để chứa dữ liệu client gửi lên. .
+//     //query là nơi Express lưu các tham số nằm sau dấu “?” trong URL. .page là tên của key trong query string.
+//     //parseInt(req.query.page) || 1  Nếu req.query.page không có hoặc không hợp lệ → dùng giá trị mặc định là 1.
+//     //Lấy page từ query string (req.query.page). Chuyển nó từ chuỗi sang số (parseInt). 
+//     // Nếu người dùng không gửi hoặc nhập linh tinh → mặc định là 1. Dùng Math.max(..., 1) để đảm bảo không bao giờ nhỏ hơn 1.
+
+//     const limit = Math.max(parseInt(req.query.limit) || 3, 1);
+
+//     //Hãy đọc số trang (page) và số lượng bài viết mỗi trang (limit) từ đường dẫn URL mà người dùng gửi lên. 
+//     // Nếu họ không gửi, hoặc gửi sai, thì dùng giá trị mặc định là 1 và 3.
+
+//     const total = posts.length;
+//     const totalPages = Math.ceil(total / limit);
+
+//     //total / limit: chia tổng số bài viết cho số bài mỗi trang → để biết có bao nhiêu trang.
+//     //Math.ceil() là hàm làm tròn lên(của đối tượng Math)   Math.ceil(3.2) // → 4
+
+//     const start = (page - 1) * limit;
+//     const end = start + limit;
+
+//     const data = posts.slice(start, end);
+//     // .slice(start, end) là hàm cắt mảng trong JavaScript.
+//     //Nó trả về một mảng mới chứa các phần tử từ start → end - 1. vì nó lấy theo phần thử index
+//     res.json({
+//         page, // tự hiểu là page: page
+//         limit, // tự hiểu là limit: limit
+//         total, // tự hiểu là total: total
+//         totalPages, // tự hiểu là totalPages: totalPages
+//         hasPrev: page > 1,
+//         hasNext: page < totalPages,
+//         results: data
+//     });
+// });
 
 
 // Thêm 1 cái api GET /posts/{id} tìm và chỉ trả về 1 post duy nhất sau khi tìm kiếm trong cái mảng mình có ở trên.
@@ -146,11 +228,11 @@ app.get('/posts/:id', (req, res) => {
     // req.params là một object chứa tất cả các tham số route (route parameters) được khai báo với : trong đường dẫn.
     // Cú pháp { id } = req.params sử dụng destructuring để lấy biến id từ req.params.
     // const params = req.params; const id = params.id;
-    const posts = [
-        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
-        { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
-        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
-    ];
+    // const posts = [
+    //     { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+    //     { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
+    //     { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+    // ];
     const post = posts.find(p => p.id === id); //Dùng phương thức .find() của mảng để tìm phần tử mà p.id === id.
     //Nếu có bài viết có id trùng với id được truyền — thì post sẽ là object đó; nếu không thì post sẽ là undefined.
     if (post) {
@@ -158,16 +240,6 @@ app.get('/posts/:id', (req, res) => {
     }
     return res.status(404).json({ error: "Post not found", id: id });
 });
-
-
-// chọn cổng server chạy (ví dụ cổng 8080 )/  bắt buộc phải có 1 cổng để server biết “ngồi ở đâu”.
-const PORT = 3001; // Đặt cổng server chạy
-
-// khởi động server Nếu không có dòng này, server không chạy được. Nó bảo Express: “Nghe các yêu cầu ở cổng 8080 nhé.”
-// app.listen(PORT, () => {
-//     console.log(`Server đang chạy tại http://localhost:${PORT}`);
-// });
-
 
 
 // ===== BƯỚC 3: ĐỊNH NGHĨA CÁC API (ROUTES) =====
@@ -179,39 +251,76 @@ const PORT = 3001; // Đặt cổng server chạy
 //     ]);
 // });
 
-// POST /posts - Thêm bài viết mới
-app.post('/posts', (req, res) => {
-    const { title, content } = req.body;
+// ===================== TẠO BÀI VIẾT (POST /posts) =====================
+app.post('/posts', async (req, res) => {  //async: cho phép dùng từ khóa await bên trong (để “chờ” database làm xong).
+    const { title, content } = req.body; // lấy dữ liệu từ client gửi lên
+    //{ title, content } = req.body là bóc tách: tạo 2 biến title và content từ req.body. (giống: const title = req.body.title; const content = req.body.content;)
+    // ✅ Kiểm tra dữ liệu có đủ không
+    //if (!title || !content): nếu thiếu title hoặc content → báo lỗi ngay.
+    //res.status(400): trả mã lỗi 400 (người dùng gửi sai dữ liệu).
+    //.json({...}): gửi phản hồi dạng JSON về cho người dùng.
     if (!title || !content) {
+        //return: dừng luôn ở đây, không chạy tiếp nữa (tránh lỡ tay lưu dữ liệu sai).
         return res.status(400).json({
             error: "Bad Request",
             message: "title và content là bắt buộc"
         });
     }
 
-    const posts = [
-        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
-        { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
-        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
-    ];
-
-    // Tạo id mới — cách này là lấy max + 1
-    const newId = (posts.length + 1).toString();
-    //posts.length -> Lấy số phần tử trong mảng + thêm 1 và chuyển nó sang string vì id có kiểu string
-    const newPost = { id: newId, title, content };
-    posts.push(newPost);
-
-    // Trả về 201 Created và bài viết mới
-    return res.status(201).json(newPost);
-
-    //   res.status(201).json({
-    //     message: "Tạo bài viết thành công",
-    //     post: newPost,
-    //     location: `/posts/${newId}`
-    //   });
-
-
+    //Bắt đầu khối thử. Nếu có lỗi xảy ra ở bên trong, sẽ nhảy xuống catch.
+    try {
+        // ✅ Lưu bài viết mới vào MongoDB
+        const newPost = await Post.create({ title, content });
+        //Post là Model (cái “khuôn” để làm việc với collection posts trong MongoDB).
+        //.create({ title, content }): tạo mới 1 document (bản ghi) trong MongoDB với 2 trường title, content.
+        //await: chờ MongoDB lưu xong rồi mới gán kết quả vào newPost.
+        //newPost sẽ là đối tượng vừa được lưu, có cả _id, createdAt, updatedAt…
+        // ✅ Trả phản hồi cho client
+        res.status(201).json({
+            message: "Đã thêm bài viết mới!",
+            post: newPost //chính là dữ liệu vừa lưu (để người dùng biết MongoDB đã ghi gì).
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: "Lỗi server",
+            message: "Không thể tạo bài viết"
+        });
+    }
 });
+
+// // POST /posts - Thêm bài viết mới
+// app.post('/posts', (req, res) => {
+//     const { title, content } = req.body;
+//     if (!title || !content) {
+//         return res.status(400).json({
+//             error: "Bad Request",
+//             message: "title và content là bắt buộc"
+//         });
+//     }
+
+//     // const posts = [
+//     //     { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+//     //     { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
+//     //     { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+//     // ];
+
+//     // Tạo id mới — cách này là lấy max + 1
+//     const newId = (posts.length + 1).toString();
+//     //posts.length -> Lấy số phần tử trong mảng + thêm 1 và chuyển nó sang string vì id có kiểu string
+//     const newPost = { id: newId, title, content };
+//     posts.push(newPost);
+
+//     // Trả về 201 Created và bài viết mới
+//     return res.status(201).json(newPost);
+
+//     //   res.status(201).json({
+//     //     message: "Tạo bài viết thành công",
+//     //     post: newPost,
+//     //     location: `/posts/${newId}`
+//     //   });
+
+// });
 
 // // (2) POST - Thêm user mới
 app.post('/users', (req, res) => {
@@ -255,12 +364,13 @@ app.put('/posts/:id', (req, res) => {
     const { id } = req.params;            // Lấy giá trị id từ đường dẫn URL, ví dụ /posts/2.
     const { title, content } = req.body;  // Lấy dữ liệu mới từ body request (title, content) ( từ client gửi lên)
 
-    // ✅ Mảng dữ liệu tạm
-    let posts = [
-        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
-        { id: "2", title: "Hướng dẫn API REST", content: "Cách dựng API REST với NodeJS" },
-        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
-    ];
+    // ✅ Kiểm tra dữ liệu gửi lên   // 1) Validate sớm – cắt rác trước khi chạm dữ liệu
+    if (!title || !content) {
+        return res.status(400).json({
+            error: "Thiếu dữ liệu",
+            message: "title và content là bắt buộc"
+        });
+    }
 
     // ✅ Tìm bài viết theo id
     const index = posts.findIndex(p => p.id === id);
@@ -271,14 +381,6 @@ app.put('/posts/:id', (req, res) => {
         return res.status(404).json({
             error: "Không tìm thấy bài viết",
             id: id
-        });
-    }
-
-    // ✅ Kiểm tra dữ liệu gửi lên
-    if (!title || !content) {
-        return res.status(400).json({
-            error: "Thiếu dữ liệu",
-            message: "title và content là bắt buộc"
         });
     }
 
@@ -311,11 +413,11 @@ app.delete('/posts/:id', (req, res) => {
     const { id } = req.params;
 
     // ✅ Mảng dữ liệu giả lập
-    let posts = [
-        { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
-        { id: "2", title: "Hướng dẫn API REST", content: "Cách dựng API REST với NodeJS" },
-        { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
-    ];
+    // let posts = [
+    //     { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
+    //     { id: "2", title: "Hướng dẫn API REST", content: "Cách dựng API REST với NodeJS" },
+    //     { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
+    // ];
 
     // ✅ Tìm vị trí bài viết theo id
     const index = posts.findIndex(p => p.id === id);
@@ -342,6 +444,15 @@ app.delete('/posts/:id', (req, res) => {
     });
 });
 
+
+
+// chọn cổng server chạy (ví dụ cổng 8080 )/  bắt buộc phải có 1 cổng để server biết “ngồi ở đâu”.
+const PORT = 3001; // Đặt cổng server chạy
+
+// khởi động server Nếu không có dòng này, server không chạy được. Nó bảo Express: “Nghe các yêu cầu ở cổng 8080 nhé.”
+// app.listen(PORT, () => {
+//     console.log(`Server đang chạy tại http://localhost:${PORT}`);
+// });
 
 // ===== BƯỚC 4: CHẠY SERVER =====
 app.listen(PORT, () => {
