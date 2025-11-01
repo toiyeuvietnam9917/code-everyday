@@ -3,173 +3,39 @@
 // Import thư viện express
 const express = require('express'); // gọi thư viện express
 // khởi tạo ứng dụng express Dòng này khởi tạo ứng dụng Express, tức là tạo ra một “server object” — gọi là app. Giống như: “Tao đã bật cái web server lên rồi đó.”
+
+const mongoose = require('mongoose');
+// require('mongoose') → là “gọi thư viện” để Node.js hiểu cách làm việc với MongoDB.
+//phải import mongoose để gọi hàm connect().
+
+// Import routes ở ĐÂY
+const authRoutes = require('./routes/authRoutes'); // <== nằm TRÊN app.use
+const postRoutes = require('./routes/postRoutes');
+
+
 const app = express(); // Tạo ứng dụng Express
 // CẤU HÌNH MIDDLEWARE =====
 // Dùng middleware này để server hiểu dữ liệu JSON gửi từ client (Postman, front-end)
 app.use(express.json());
 
 // ===================== KẾT NỐI MONGODB =====================
-const mongoose = require('mongoose');
-// require('mongoose') → là “gọi thư viện” để Node.js hiểu cách làm việc với MongoDB.
-
 mongoose.connect('mongodb://127.0.0.1:27017/node_rest_demo')
     .then(() => console.log('✅ Connected to MongoDB'))
     .catch(err => console.error('❌ MongoDB connection failed:', err));
 //mongoose.connect(...) → là “nối dây điện” giữa code  và database MongoDB trên máy.
 //node_rest_demo Tên của database (MongoDB tự tạo nếu chưa có)
 
-// ===================== TẠO SCHEMA & MODEL =====================
-// 🧱 1. Tạo Schema (khuôn dữ liệu) - Định nghĩa cấu trúc dữ liệu bài viết (post)
-const postSchema = new mongoose.Schema({
-    title: { type: String, required: true },    // bắt buộc có title (chuỗi)
-    content: { type: String, required: true }   // bắt buộc có content (chuỗi)
-}, { timestamps: true }); // tự động thêm createdAt, updatedAt
-// 🟢 Thêm index cho title
-postSchema.index({ title: 1 }); // 1 = sắp xếp tăng dần (A → Z). -1 = sắp xếp giảm dần (Z → A).
-//  “Ê MongoDB, mày tạo cho tao một cái mục lục sắp xếp theo title nhé — từ A → Z.”
-// 2. Tạo Model - đại diện cho collection "posts"
-const Post = mongoose.model('Post', postSchema);
-//Tên Model nên viết hoa chữ cái đầu, vì nó là “class” (lớp đối tượng) đại diện cho 1 loại dữ liệu.
-//Post không phải là 1 bài viết duy nhất. Nó là “khuôn” để tạo ra nhiều bài viết. (giống như class Student → tạo ra nhiều student)
-//mongoose.model(...) mongoose.model nghĩa là: “Ê Mongoose, tạo cho tao một cái bảng (collection) mới trong MongoDB nhé!”
+// ===================== MODELS =====================
+const Post = require('./models/Post');
+const User = require('./models/User');
 
-// ===== USER MODEL =====
-const userSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true, select: false }
-}, { timestamps: true }); // tự động thêm createdAt, updatedAt
-
-const User = mongoose.model('User', userSchema);
+// ===================== ROUTES =====================
+app.use('/api/auth', authRoutes); // <== nằm DƯỚI require
+app.use('/api/posts', postRoutes);
 
 
-const bcrypt = require('bcryptjs');  // dùng để băm (hash) mật khẩu
-const SALT_ROUNDS = 12; //“SALT_ROUNDS” là mức độ khó của việc mã hoá.
-
-app.post('/registration', async (req, res) => {
-    const { name, email, password } = req.body;
-
-    // 400: thiếu dữ liệu
-    if (!name || !email || !password) {
-        return res.status(400).json({ message: 'Thiếu name, email hoặc password' });
-    }
-
-    try {
-        // Băm mật khẩu trước khi lưu
-        const hash = await bcrypt.hash(password, SALT_ROUNDS);
-
-        const user = await User.create({
-            name,
-            email,          // nhớ set lowercase+trim trong schema
-            password: hash  // lưu HASH, không lưu plaintext
-        });
-
-        // 201: Created
-        return res.status(201).json({
-            message: 'Đăng ký thành công',
-            userId: user._id.toString(),
-            name: user.name,
-            email: user.email,
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt
-        });
-
-    } catch (err) {
-        // 409: email trùng (do unique index)
-        //11000 là mã lỗi của MongoDB à vi phạm ràng buộc unique: bạn 
-        // đang cố chèn/khởi tạo một document có giá trị trùng với một document đã có trên trường được đánh unique
-        if (err && err.code === 11000) {
-            return res.status(409).json({ message: 'Email đã tồn tại' });
-        }
-        console.error(err); //In lỗi ra console cho dev xem
-        return res.status(500).json({ message: 'Lỗi server' });
-    }
-});
-
-const jwt = require('jsonwebtoken');
-const JWT_SECRET = 'my_secret_key_123';
-const JWT_EXPIRES_IN = '1h'; // token tồn tại 1 tiếng
-
-app.post('/login', async (req, res) => {
-    const { email, password } = req.body;
-
-    // 1) Thiếu dữ liệu -> 400
-    if (!email || !password) {
-        return res.status(400).json({ message: 'Thiếu email hoặc password' });
-    }
-
-    try {
-        // 2) Chuẩn hoá email giống schema
-        const normalizedEmail = email.trim().toLowerCase();
-
-        // 3) Tìm user theo email (NHỚ bật lấy password vì schema có select:false)
-        //select('+password') rất quan trọng: vì trong schema mình ẩn password, nên phải xin lấy ra để so sánh.
-        //Tìm user theo email trong MongoDB.
-        //findOne() là phương thức (method) của Mongoose Model. Nó dùng để tìm ra một document (1 bản ghi) trong collection thỏa điều kiện.
-        //Tìm trong database xem có user nào có email trùng với email mà client gửi lên hay không.
-        const user = await User.findOne({ email: normalizedEmail }).select('+password');
-
-        // 4) Không thấy user -> 401
-        if (!user) {
-            return res.status(401).json({ message: 'Sai email hoặc mật khẩu' });
-        }
-
-        // 5) So khớp password: so sánh password thô với hash trong DB
-        const ok = await bcrypt.compare(password, user.password);
-        //password: là mật khẩu người dùng vừa gõ trên form (dạng bình thường).
-        //user.password: là mật khẩu dạng hash đang lưu trong database.
-        //bcrypt.compare() tự hash mật khẩu người dùng nhập, rồi so sánh với hash đã lưu.
-        //bcrypt.compare() sẽ so sánh 2 cái này xem có khớp không (nó sẽ hash lại cái anh vừa nhập rồi đối chiếu với cái lưu trong DB).
-        if (!ok) {
-            return res.status(401).json({ message: 'Sai email hoặc mật khẩu' });
-        }
 
 
-        // ✅ Nếu password đúng → tạo JWT token
-        const payload = {
-            id: user._id.toString(),
-            name: user.name,
-            email: user.email
-        };
-        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-        //jwt.sign() Hàm của thư viện jsonwebtoken – dùng để “ký tên” tạo ra token (thẻ xác nhận).
-        //payload Là thông tin muốn nhét vào token
-        //JWT_SECRET Là chìa khóa bí mật dùng để ký token.→ Chỉ server biết, giúp người khác không thể giả mạo thẻ.
-        //{ expiresIn: JWT_EXPIRES_IN } Là thời hạn sử dụng token 
-
-        // 6) Thành công -> 200 (KHÔNG trả password/hash)
-        return res.status(200).json({
-            message: 'Đăng nhập thành công',
-            token,
-            user: {
-                id: user._id.toString(),
-                name: user.name,
-                email: user.email,
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt
-            }
-        });
-
-    } catch (err) {
-        console.error('Login error:', err);
-        return res.status(500).json({ message: 'Lỗi server' });
-    }
-});
-
-
-// Khai báo dữ liệu dùng chung (nằm ngoài API)
-let posts = [
-    { id: "1", title: "Bài 1", content: "Giới thiệu REST API" },
-    { id: "2", title: "Bài 2", content: "NodeJS cơ bản" },
-    { id: "3", title: "Bài 3", content: "ExpressJS là gì" },
-    { id: "4", title: "Bài 4", content: "Cách dùng Postman" },
-    { id: "5", title: "Bài 5", content: "JSON và HTTP" },
-    { id: "6", title: "Bài 6", content: "Routing trong Express" },
-    { id: "7", title: "Bài 7", content: "Middleware là gì" },
-    { id: "8", title: "Bài 8", content: "Error Handling cơ bản" },
-    { id: "9", title: "Bài 9", content: "CRUD API với NodeJS" },
-    { id: "10", title: "Bài 10", content: "Tổng kết REST API" }
-];
 
 // định nghĩa 1 route (đường dẫn) cơ bản
 // '/’ nghĩa là đường dẫn gốc (trang chủ). Khi ai đó truy cập http://localhost:3001/, code trong ngoặc sẽ chạy.
@@ -252,76 +118,6 @@ app.get('/search-users', (req, res) => {
 //     res.json(posts);
 // });
 
-// LẤY DANH SÁCH BÀI VIẾT (GET /posts) và phân trang - getAllPost and pagination
-// Thử tạo index trên cái title của Post. Sau đó thì update cái API GET /posts để hỗ trợ tìm (search) posts theo title.
-app.get('/posts', async (req, res) => {
-    try {
-        //1️⃣ Đọc tham số ?page & ?limit từ query, ép số và chặn min = 1
-        const page = Math.max(parseInt(req.query.page) || 1, 1);
-        const limit = Math.max(parseInt(req.query.limit) || 5, 1);
-
-        //2️⃣ Đọc thêm tham số ?search (nếu người dùng muốn tìm theo title)
-        // req.query là object chứa các tham số query string từ URL gửi lên
-        //"Tạo biến search và gán giá trị req.query.search cho nó."
-        const { search } = req.query;
-
-        //3️⃣ Tạo điều kiện lọc
-        // Nếu có ?search thì filter theo title (tìm gần đúng, không phân biệt hoa thường)
-        let filter = {};
-        if (search) {
-            filter = { title: { $regex: search, $options: 'i' } };
-            //filter = { title: { ... } } nghĩa là: Tạo điều kiện lọc cho MongoDB: “Tôi chỉ muốn tìm những bài viết có title giống với từ khóa người nhập.”
-            //$regex: là “regular expression” — cho phép tìm gần đúng. → Nếu search = "api" → Thì sẽ tìm được "REST API", "api cơ bản", "học Api nâng cao"...
-            //$options: 'i': nghĩa là không phân biệt chữ hoa hay thường → "API", "api", "Api" đều được coi là giống nhau.
-            //Nếu có từ khóa search → chỉ tìm bài có title chứa từ đó. Nếu không có → lấy tất cả bài.
-            //{ title: { $regex: search, $options: 'i' } }
-            //Đây là một object lồng nhau (nested object) { <tên_trường>: { <toán_tử_truy_vấn>: <giá_trị> } }
-            // <tên_trường> = title <toán_tử_truy_vấn> = $regex <giá_trị> = search
-            // ví dụ search = ap -> Tìm tất cả các document mà trường title có chứa chữ api (không phân biệt hoa thường).
-        };
-
-        // 4️⃣ Đếm tổng số bài viết (phù hợp với điều kiện filter)
-        const total = await Post.countDocuments(filter);
-        //.countDocuments() → là method (hàm có sẵn của Mongoose) dùng để đếm số lượng document (bản ghi) hiện có trong collection.
-        //await → là từ khóa của JavaScript, nghĩa là “chờ MongoDB đếm xong rồi mới gán giá trị cho total”.
-        //Đoạn này lấy tổng số bài viết hiện có trong DB, gán vào biến total.
-
-        //totalPages là tổng số trang cần có, đảm bảo ≥ 1.
-        const totalPages = Math.max(Math.ceil(total / limit), 1);
-        //Math	Đối tượng có sẵn trong JavaScript	Chứa các hàm toán học tiện dụng. .ceil()	
-        // Method của Math	Làm tròn lên đến số nguyên gần nhất. 
-        // .max()	Method của Math	Chọn giá trị lớn nhất giữa các số truyền vào.
-
-
-        //5️⃣ Tính vị trí bỏ qua (skip) rồi lấy dữ liệu theo trang
-        const skip = (page - 1) * limit;
-        //(page - 1)	Công thức toán học	Tính xem đang ở trang số mấy.->(page − 1) = số trang cần bỏ qua trước khi hiển thị trang hiện tại.
-        // limit	Phép nhân trong JS	Mỗi trang có bao nhiêu bài.
-        //skip	Biến	Lưu số lượng bài cần bỏ qua.
-
-        const posts = await Post.find(filter)
-            //Post là model đại diện cho collection posts.\
-            //.find() là hàm của Mongoose để tìm các document (nhiều dòng) trong MongoDB.
-            .sort({ createdAt: -1 }) // mới nhất lên đầu
-            .skip(skip) //→ bỏ qua một số dòng đầu (cho phân trang) .find() là hàm của Mongoose để tìm các document (nhiều dòng) trong MongoDB.
-            .limit(limit); //→ chỉ lấy một số lượng giới hạn (ví dụ 5 bài/trang)
-
-        // 4) Trả kết quả + metadata phân trang
-        res.json({
-            page,
-            limit,
-            total,
-            totalPages,
-            hasPrev: page > 1,
-            hasNext: page < totalPages,
-            results: posts
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Lỗi server khi lấy danh sách bài viết' });
-    }
-});
-
 
 // API GET /posts - phân trang
 // app.get('/posts', (req, res) => {
@@ -366,25 +162,7 @@ app.get('/posts', async (req, res) => {
 // });
 
 
-// Thêm 1 cái api GET /posts/{id} tìm và chỉ trả về 1 post duy nhất sau khi tìm kiếm trong cái mảng mình có ở trên.
-// GET /posts/:id - trả về 1 bài viết
-app.get('/posts/:id', (req, res) => {
-    const { id } = req.params;
-    // req.params là một object chứa tất cả các tham số route (route parameters) được khai báo với : trong đường dẫn.
-    // Cú pháp { id } = req.params sử dụng destructuring để lấy biến id từ req.params.
-    // const params = req.params; const id = params.id;
-    // const posts = [
-    //     { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
-    //     { id: "2", title: "Hướng dẫn API REST", content: "Hướng dẫn cách dựng API REST với NodeJS" },
-    //     { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
-    // ];
-    const post = posts.find(p => p.id === id); //Dùng phương thức .find() của mảng để tìm phần tử mà p.id === id.
-    //Nếu có bài viết có id trùng với id được truyền — thì post sẽ là object đó; nếu không thì post sẽ là undefined.
-    if (post) {
-        return res.json(post);
-    }
-    return res.status(404).json({ error: "Post not found", id: id });
-});
+
 
 
 // ===== BƯỚC 3: ĐỊNH NGHĨA CÁC API (ROUTES) =====
@@ -396,43 +174,7 @@ app.get('/posts/:id', (req, res) => {
 //     ]);
 // });
 
-// ===================== TẠO BÀI VIẾT (POST /posts) =====================
-app.post('/posts', async (req, res) => {  //async: cho phép dùng từ khóa await bên trong (để “chờ” database làm xong).
-    const { title, content } = req.body; // lấy dữ liệu từ client gửi lên
-    //{ title, content } = req.body là bóc tách: tạo 2 biến title và content từ req.body. (giống: const title = req.body.title; const content = req.body.content;)
-    // ✅ Kiểm tra dữ liệu có đủ không
-    //if (!title || !content): nếu thiếu title hoặc content → báo lỗi ngay.
-    //res.status(400): trả mã lỗi 400 (người dùng gửi sai dữ liệu).
-    //.json({...}): gửi phản hồi dạng JSON về cho người dùng.
-    if (!title || !content) {
-        //return: dừng luôn ở đây, không chạy tiếp nữa (tránh lỡ tay lưu dữ liệu sai).
-        return res.status(400).json({
-            error: "Bad Request",
-            message: "title và content là bắt buộc"
-        });
-    }
 
-    //Bắt đầu khối thử. Nếu có lỗi xảy ra ở bên trong, sẽ nhảy xuống catch.
-    try {
-        // ✅ Lưu bài viết mới vào MongoDB
-        const newPost = await Post.create({ title, content });
-        //Post là Model (cái “khuôn” để làm việc với collection posts trong MongoDB).
-        //.create({ title, content }): tạo mới 1 document (bản ghi) trong MongoDB với 2 trường title, content.
-        //await: chờ MongoDB lưu xong rồi mới gán kết quả vào newPost.
-        //newPost sẽ là đối tượng vừa được lưu, có cả _id, createdAt, updatedAt…
-        // ✅ Trả phản hồi cho client
-        res.status(201).json({
-            message: "Đã thêm bài viết mới!",
-            post: newPost //chính là dữ liệu vừa lưu (để người dùng biết MongoDB đã ghi gì).
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({
-            error: "Lỗi server",
-            message: "Không thể tạo bài viết"
-        });
-    }
-});
 
 // // POST /posts - Thêm bài viết mới
 // app.post('/posts', (req, res) => {
@@ -504,46 +246,7 @@ app.post('/users', (req, res) => {
 //     });
 // });
 
-// PUT /posts/:id - Cập nhật bài viết gửi lên {title: string, content: string} 
-app.put('/posts/:id', (req, res) => {
-    const { id } = req.params;            // Lấy giá trị id từ đường dẫn URL, ví dụ /posts/2.
-    const { title, content } = req.body;  // Lấy dữ liệu mới từ body request (title, content) ( từ client gửi lên)
 
-    // ✅ Kiểm tra dữ liệu gửi lên   // 1) Validate sớm – cắt rác trước khi chạm dữ liệu
-    if (!title || !content) {
-        return res.status(400).json({
-            error: "Thiếu dữ liệu",
-            message: "title và content là bắt buộc"
-        });
-    }
-
-    // ✅ Tìm bài viết theo id
-    const index = posts.findIndex(p => p.id === id);
-    // findIndex() sẽ duyệt mảng từ đầu đến cuối. Tìm vị trí bài viết cần sửa trong mảng. Nếu không thấy → trả lỗi 404.
-    //Dòng này có nhiệm vụ tìm xem bài viết nào trong mảng posts có id trùng với id mà client gửi lên (qua URL), và lấy vị trí (index) của bài viết đó trong mảng.
-
-    if (index === -1) {
-        return res.status(404).json({
-            error: "Không tìm thấy bài viết",
-            id: id
-        });
-    }
-
-    // ✅ Cập nhật bài viết 
-    // Không phải là khai báo lại. ✅ Mà chỉ là thay đổi phần tử bên trong mảng hiện có.
-    //cập nhật (thay đổi) bài viết cũ trong mảng posts → bằng cách giữ nguyên các thuộc tính cũ, và ghi đè lại các thuộc tính mới (title, content) mà client gửi lên.
-    //posts[index] Là phần tử cần cập nhật trong mảng.
-    //Ý nghĩa tổng thể: Tạo ra một object mới, sao chép toàn bộ dữ liệu cũ từ posts[index], rồi ghi đè lại hai trường title và content bằng giá trị mới (client gửi lên).
-    // ...posts[index] = copy toàn bộ các cặp key–value của bài viết cũ
-    // posts[index] = { id: "2", title: "Cũ", content: "Cũ" }; -> ...posts[index] tương đương với: id: "2", title: "Cũ", content: "Cũ"
-    posts[index] = { ...posts[index], title, content };
-
-    // ✅ Trả về kết quả
-    res.status(200).json({
-        message1: "Cập nhật bài viết thành công",
-        post: posts[index]
-    });
-});
 
 
 // (4) DELETE - Xóa user
@@ -553,41 +256,7 @@ app.put('/posts/:id', (req, res) => {
 // });
 
 
-// DELETE /posts/:id - Xóa bài viết
-app.delete('/posts/:id', (req, res) => {
-    const { id } = req.params;
 
-    // ✅ Mảng dữ liệu giả lập
-    // let posts = [
-    //     { id: "1", title: "Bài học đầu tiên", content: "Bài này học về REST API" },
-    //     { id: "2", title: "Hướng dẫn API REST", content: "Cách dựng API REST với NodeJS" },
-    //     { id: "3", title: "Mẹo JavaScript", content: "Một số mẹo nhỏ khi dùng JavaScript hiệu quả." }
-    // ];
-
-    // ✅ Tìm vị trí bài viết theo id
-    const index = posts.findIndex(p => p.id === id);
-
-    // ❌ Nếu không tìm thấy thì trả về lỗi 404
-    if (index === -1) {
-        return res.status(404).json({
-            error: "Không tìm thấy bài viết cần xóa",
-            id: id
-        });
-    }
-
-    // ✅ Xóa bài viết bằng splice()  cú pháp array.splice(start, deleteCount)    array.splice(vị_trí_bắt_đầu, số_lượng_cần_xóa, ...phần_tử_mới)
-    //start	Vị trí bắt đầu xóa hoặc thêm (đếm từ 0). deleteCount	Số lượng phần tử cần xóa kể từ vị trí start.
-    const deletedPost = posts.splice(index, 1)[0]; // lấy ra phần tử bị xóa
-    //[0] → lấy phần tử đầu tiên trong mảng đó
-    //Nếu bỏ [0] thì vẫn hoạt động, nhưng khi gửi về cho client, sẽ nhận được mảng, không phải object.
-    //“Xóa bài viết ở vị trí index khỏi mảng, và lưu bài viết vừa bị xóa vào biến deletedPost.”
-
-    // ✅ Trả về phản hồi
-    res.status(200).json({
-        message: "Đã xóa bài viết thành công",
-        deleted: deletedPost
-    });
-});
 
 
 
