@@ -92,7 +92,7 @@ router.post('/login', async (req, res) => {
         const payload = {
             id: user._id.toString(),
             name: user.name,
-            email: user.email
+            // email: user.email
         };
         const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
         //jwt.sign() Hàm của thư viện jsonwebtoken – dùng để “ký tên” tạo ra token (thẻ xác nhận).

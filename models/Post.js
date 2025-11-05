@@ -8,7 +8,16 @@ const postSchema = new mongoose.Schema({
     content: { type: String, required: true }   // bắt buộc có content (chuỗi)
 }, { timestamps: true }); // tự động thêm createdAt, updatedAt
 // 🟢 Thêm index cho title
-postSchema.index({ title: 1 }); // 1 = sắp xếp tăng dần (A → Z). -1 = sắp xếp giảm dần (Z → A).
+// postSchema.index({ title: 1 }); // 1 = sắp xếp tăng dần (A → Z). -1 = sắp xếp giảm dần (Z → A).
+postSchema.index(
+    { title: 'text', content: 'text' },
+    {
+        weights: { title: 10, content: 3 },
+        default_language: 'none',      // Không áp dụng ngôn ngữ mặc định nào khi phân tích text
+        language_override: 'language'  // Cho phép mỗi document chỉ định ngôn ngữ riêng qua field "language"
+        //Nếu trong document (bản ghi) của bạn có một field tên "language", MongoDB sẽ dùng giá trị đó để biết “ngôn ngữ của document này là gì”.
+    }
+);
 //  “Ê MongoDB, mày tạo cho tao một cái mục lục sắp xếp theo title nhé — từ A → Z.”
 // 2. Tạo Model - đại diện cho collection "posts"
 // const Post = mongoose.model('Post', postSchema); -> ko sài đc nữa
