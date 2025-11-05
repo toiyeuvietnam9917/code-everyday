@@ -77,7 +77,7 @@ router.post('/', requireAuth, async (req, res) => {
     // Nếu hợp lệ → đi tiếp vào hàm async (req, res) (route handler) để tạo bài viết.
     const { title, content } = req.body; // lấy dữ liệu từ client gửi lên
     //{ title, content } = req.body là bóc tách: tạo 2 biến title và content từ req.body. (giống: const title = req.body.title; const content = req.body.content;)
-    // ✅ Kiểm tra dữ liệu có đủ không
+    // 1️⃣ Kiểm tra dữ liệu
     //if (!title || !content): nếu thiếu title hoặc content → báo lỗi ngay.
     //res.status(400): trả mã lỗi 400 (người dùng gửi sai dữ liệu).
     //.json({...}): gửi phản hồi dạng JSON về cho người dùng.
@@ -91,16 +91,22 @@ router.post('/', requireAuth, async (req, res) => {
 
     //Bắt đầu khối thử. Nếu có lỗi xảy ra ở bên trong, sẽ nhảy xuống catch.
     try {
-        // ✅ Lưu bài viết mới vào MongoDB
-        const newPost = await Post.create({ title, content });
+        // ✅ 2️⃣ Tạo post kèm theo user đang đăng nhập (req.user lấy từ JWT)
+        const newPost = await Post.create({
+            title: title.trim(),
+            content: content.trim(),
+            author: req.user.id  // lấy từ token đã decode Là ID của user được lấy từ bên trong JWT. author là id đang đăng nhập
+            //author: req.user.id nghĩa là “lưu ID của user đang đăng nhập (lấy từ JWT token) làm tác giả bài viết.”
+        });
         //Post là Model (cái “khuôn” để làm việc với collection posts trong MongoDB).
         //.create({ title, content }): tạo mới 1 document (bản ghi) trong MongoDB với 2 trường title, content.
         //await: chờ MongoDB lưu xong rồi mới gán kết quả vào newPost.
         //newPost sẽ là đối tượng vừa được lưu, có cả _id, createdAt, updatedAt…
-        // ✅ Trả phản hồi cho client
+        // ✅ 3️⃣ Trả kết quả Trả phản hồi cho client
         res.status(201).json({
             message: "Đã thêm bài viết mới!",
-            post: newPost //chính là dữ liệu vừa lưu (để người dùng biết MongoDB đã ghi gì).
+            post: newPost, //chính là dữ liệu vừa lưu (để người dùng biết MongoDB đã ghi gì).
+            createdBy: { id: req.user.id, name: req.user.name }
         });
     } catch (err) {
         console.error('Create post error:', err);

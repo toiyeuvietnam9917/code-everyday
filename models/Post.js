@@ -5,7 +5,12 @@ const mongoose = require('mongoose');
 // 🧱 1. Tạo Schema (khuôn dữ liệu) - Định nghĩa cấu trúc dữ liệu bài viết (post)
 const postSchema = new mongoose.Schema({
     title: { type: String, required: true },    // bắt buộc có title (chuỗi)
-    content: { type: String, required: true }   // bắt buộc có content (chuỗi)
+    content: { type: String, required: true },   // bắt buộc có content (chuỗi)
+    author: {
+        type: mongoose.Schema.Types.ObjectId, // kiểu dữ liệu ObjectId
+        ref: 'User',                          // tên model được tham chiếu tới
+        required: true                        // bắt buộc phải có tác giả
+    }
 }, { timestamps: true }); // tự động thêm createdAt, updatedAt
 // 🟢 Thêm index cho title
 // postSchema.index({ title: 1 }); // 1 = sắp xếp tăng dần (A → Z). -1 = sắp xếp giảm dần (Z → A).
