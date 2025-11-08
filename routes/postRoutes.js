@@ -185,6 +185,7 @@ router.get('/:id', requireAuth, async (req, res) => {
             message: 'Lấy bài viết thành công',
             post,
             viewedBy: { id: req.user?.id, name: req.user?.name }
+            //Nếu req.user tồn tại thì lấy id, còn nếu req.user là null hoặc undefined thì kết quả là undefined luôn (không lỗi).
         });
     } catch (err) {
         console.error('Get post error:', err);
