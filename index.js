@@ -9,8 +9,9 @@ const mongoose = require('mongoose');
 //phải import mongoose để gọi hàm connect().
 
 // Import routes ở ĐÂY
-const authRoutes = require('./routes/authRoutes'); // <== nằm TRÊN app.use
+const authRoutes = require('./routes/authRoutes'); // <== nằm TRÊN app.use module.exports = router;
 const postRoutes = require('./routes/postRoutes');
+const classRoutes = require('./routes/classRoutes');
 
 
 const app = express(); // Tạo ứng dụng Express
@@ -28,10 +29,12 @@ mongoose.connect('mongodb://127.0.0.1:27017/node_rest_demo')
 // ===================== MODELS =====================
 const Post = require('./models/Post');
 const User = require('./models/User');
+const Class = require('./models/Class');
 
 // ===================== ROUTES =====================
 app.use('/api/auth', authRoutes); // <== nằm DƯỚI require
 app.use('/api/posts', postRoutes);
+app.use('/api/classes', classRoutes);
 
 
 

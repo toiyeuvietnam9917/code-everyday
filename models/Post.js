@@ -9,7 +9,7 @@ const postSchema = new mongoose.Schema({
     author: {
         type: mongoose.Schema.Types.ObjectId, // kiểu dữ liệu ObjectId
         ref: 'User',                          // tên model được tham chiếu tới
-        required: true                        // bắt buộc phải có tác giả
+        required: true                        // bắt buộc phải có tác giả //Ai là người viết bài đăng đó
     }
 }, { timestamps: true }); // tự động thêm createdAt, updatedAt
 // 🟢 Thêm index cho title
@@ -29,4 +29,9 @@ postSchema.index(
 //Tên Model nên viết hoa chữ cái đầu, vì nó là “class” (lớp đối tượng) đại diện cho 1 loại dữ liệu.
 //Post không phải là 1 bài viết duy nhất. Nó là “khuôn” để tạo ra nhiều bài viết. (giống như class Student → tạo ra nhiều student)
 //mongoose.model(...) mongoose.model nghĩa là: “Ê Mongoose, tạo cho tao một cái bảng (collection) mới trong MongoDB nhé!”ư
-module.exports = mongoose.model('Post', postSchema);
+module.exports = mongoose.model('Post', postSchema); //tạo model từ schema module.exports = Post;
+//“Tôi muốn xuất ra (export) biến Post để những file khác có thể require và sử dụng nó.”
+
+///cách 1
+// const Post = mongoose.model('Post', postSchema);
+// module.exports = Post;
