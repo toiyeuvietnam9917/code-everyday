@@ -30,6 +30,7 @@ mongoose.connect('mongodb://127.0.0.1:27017/node_rest_demo')
 const Post = require('./models/Post');
 const User = require('./models/User');
 const Class = require('./models/Class');
+const Enrollment = require('./models/Enrollment');
 
 // ===================== ROUTES =====================
 app.use('/api/auth', authRoutes); // <== nằm DƯỚI require

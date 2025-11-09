@@ -3,8 +3,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Class = require('../models/Class');
+const Enrollment = require('../models/Enrollment');
 const { requireAuth } = require('../middleware/auth');
-
 
 // routes/classRoutes.js (rút gọn)
 // router.post('/', requireAuth, async (req, res) => {
@@ -128,7 +128,7 @@ router.put('/:id', async (req, res) => {
     try {
         let { name, description, createdBy, ...rest } = req.body ?? {};
         //Dấu ...rest gom tất cả field lạ (ngoài 3 cái trên) vào biến rest để kiểm tra sau.
-        const $set = {};
+        const $set = {}; //$set mặc định của mongo
         //MongoDB khi cập nhật thường dùng cú pháp $set để “chỉ sửa những trường có trong đây”.
         if (typeof name === 'string' && name.trim()) $set.name = name.trim();
         //Nếu name là chuỗi và không rỗng → thêm vào $set.
@@ -191,6 +191,66 @@ router.delete('/:id', async (req, res) => {
         return res.status(200).json({ message: 'Đã xóa lớp học thành công', deletedClass: deleted });
     } catch (err) {
         console.error('Delete class error:', err);
+        return res.status(500).json({ error: 'Lỗi server' });
+    }
+});
+
+/* ===================== JOIN CLASS (PRIVATE) ===================== */
+// POST /api/classes/:classId/join
+router.post('/:classId/join', requireAuth, async (req, res) => {
+    const { classId } = req.params;
+
+    // 1) Validate ObjectId
+    if (!mongoose.isValidObjectId(classId)) {
+        return res.status(400).json({ error: 'classId không hợp lệ' });
+    }
+
+    try {
+        // 2) Kiểm tra class có tồn tại không
+        //Đi tìm trong bảng Class xem có lớp nào có id = classId hay không. 
+        // Nếu tìm thấy thì lấy ra thông tin, còn nếu không có thì báo lỗi Không tìm thấy lớp.”
+        //.findById(...) là câu lệnh tìm một bản ghi theo ID.
+        //.select('_id name') Đây là chỉ lấy ra một vài trường (field), không lấy hết.
+        const clazz = await Class.findById(classId).select('_id name');
+        if (!clazz) return res.status(404).json({ error: 'Không tìm thấy lớp' });
+
+        // ✅ Thêm check tối thiểu: đã là thành viên thì trả luôn
+        const existed = await Enrollment.findOne({ user: req.user.id, class: classId }).select('_id').lean();
+        //lean() là một tối ưu đặc biệt của Mongoose, giúp truy vấn nhanh hơn và tốn ít RAM hơn.
+        //chỉ cần biết có tồn tại hay không, không cần chỉnh sửa hoặc lưu lại.
+        if (existed) {
+            return res.status(200).json({ message: 'Đã là thành viên lớp này' });
+        }
+
+        // 3) Upsert quan hệ user-class (không tạo trùng)
+        //“Tìm trong bảng Enrollment (bảng ghi danh) xem người dùng này đã đăng ký vào lớp đó chưa.
+        //Nếu chưa có thì tạo mới một bản ghi,
+        //còn nếu đã có rồi thì không cần tạo lại.”
+        //1️⃣ Enrollment.findOneAndUpdate(...) Tìm một bản ghi và cập nhật nó (nếu có)
+        //2️⃣ { user: req.user.id, class: classId } Là điều kiện để tìm. Tìm xem user có ID là 672f2e9e... đã đăng ký lớp có ID 6738a7b3... chưa
+        //Enrollment là model (bảng lưu việc ai học lớp nào). Nếu tìm thấy,nó update. Nếu ko thấy, thì với upsert: true, nó sẽ tạo mới luôn.
+        const enrollment = await Enrollment.findOneAndUpdate(
+            { user: req.user.id, class: classId }, //requireAuth để lấy req.user.id từ JWT.
+            { $setOnInsert: { role: 'student', status: 'active', joinedAt: new Date() } },
+            //$setOnInsert Là một toán tử đặc biệt chỉ hoạt động khi bạn dùng upsert: true.
+            //= “chỉ chạy khi tạo mới document (khi chưa tồn tại).”
+            { upsert: true, new: true }
+            //upsert: true → nếu chưa có thì insert (thêm mới).
+            //new: true → trả về document sau khi update hoặc tạo, không phải bản cũ.
+        )
+            .populate('user', 'name email')
+            .populate('class', 'name description');
+
+        return res.status(200).json({
+            message: 'Đăng ký lớp thành công',
+            enrollment
+        });
+    } catch (err) {
+        // Duplicate key (trường hợp hiếm khi race-condition): đã là member
+        if (err && err.code === 11000) {
+            return res.status(200).json({ message: 'Đã là thành viên lớp này' });
+        }
+        console.error('Join class error:', err);
         return res.status(500).json({ error: 'Lỗi server' });
     }
 });
